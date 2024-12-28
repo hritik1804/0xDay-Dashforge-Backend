@@ -226,7 +226,7 @@ exports.readDataById = async (req, res) => {
                     size: file.length,
                     uploadDate: file.uploadDate
                 },
-                // data: results,
+                data: results,
                 rowCount: results.length
             });
 
