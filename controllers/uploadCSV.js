@@ -2,13 +2,45 @@ require('dotenv').config();
 const fs = require('fs');
 const csv = require('csv-parser');
 const DataModel = require('../models/dataModel');
-const { detectType, generateAIInsights } = require('../middleware/openaiHelper');  // Import helper functions
+const { generateAIInsights } = require('../middleware/openaiHelper');  // Import helper functions
 const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const mongoose = require('mongoose');
 const path = require('path');
 
 // MongoDB URI
 const uri = process.env.MONGODB_URI;
+
+// Add this helper function at the top of the file
+function detectType(value) {
+    // Remove any whitespace
+    if (typeof value === 'string') {
+        value = value.trim();
+    }
+    
+    // Check if value is empty
+    if (value === '' || value === null || value === undefined) {
+        return { type: 'null', value: null };
+    }
+    
+    // Check if value is a number
+    if (!isNaN(value) && value !== '') {
+        return { type: 'number', value: parseFloat(value) };
+    }
+    
+    // Check if value is a boolean
+    if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
+        return { type: 'boolean', value: value.toLowerCase() === 'true' };
+    }
+    
+    // Check if value is a date
+    const dateValue = new Date(value);
+    if (!isNaN(dateValue) && value.length > 5) {
+        return { type: 'date', value: dateValue };
+    }
+    
+    // Default to string
+    return { type: 'string', value: value };
+}
 
 // Controller to upload CSV file
 exports.uploadCSV = async (req, res) => {
@@ -37,7 +69,12 @@ exports.uploadCSV = async (req, res) => {
             .on('finish', async () => {
                 console.log('File uploaded to GridFS successfully.');
                 await client.close();
-                res.status(200).send(`File uploaded successfully: ${filename}`);
+                // Return the fileId in the response
+                res.status(200).json({
+                    message: `File uploaded successfully: ${filename}`,
+                    fileId: uploadStream.id.toString(),
+                    filename: filename
+                });
             });
     } catch (error) {
         console.error('Error connecting to MongoDB:', error);
@@ -48,55 +85,79 @@ exports.uploadCSV = async (req, res) => {
 // Controller to parse CSV, save data to DB, and generate AI insights
 // CSV Upload and Parsing
 exports.parseCSVAndSaveToDB = async (req, res) => {
-    const results = [];
-    const filePath = `uploads/${req.body.filename}`;
-    const userPrompt = req.body.prompt;
-    const filename = req.body.filename;  // Capture the filename from the request body
+    try {
+        const { fileId, prompt, filename } = req.body;
+        
+        if (!fileId) {
+            return res.status(400).json({ message: 'Please provide a fileId' });
+        }
 
-    console.log("---", filePath);
+        const client = new MongoClient(uri);
+        await client.connect();
+        const db = client.db('final');
+        const bucket = new GridFSBucket(db);
 
-    if (!fs.existsSync(filePath)) {
-        return res.status(400).send('File not found.');
-    }
+        const results = [];
 
-    fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('data', (data) => {
-            const industry = data.Industry || 'Unknown';
-            const dynamicFields = new Map();
-
-            Object.keys(data).forEach(key => {
-                if (key !== 'Industry') {
-                    dynamicFields.set(key, detectType(data[key]));
-                }
+        try {
+            // Get the file metadata to get the filename
+            const fileInfo = await db.collection('fs.files').findOne({ 
+                _id: new ObjectId(fileId) 
             });
 
-            const rowData = {
-                industry: industry,
-                dynamicFields: Object.fromEntries(dynamicFields),
-                filename: filename  // Add the filename to each row of data
-            };
-            results.push(rowData);
-        })
-        .on('end', async () => {
-            try {
-                await DataModel.insertMany(results);
-
-                const aiResponse = await generateAIInsights(results, userPrompt);
-
-                res.status(200).send({
-                    message: 'CSV parsed, data saved to database, and AI insights generated.',
-                    aiResponse,
-                });
-            } catch (err) {
-                console.error('Database insertion error:', err);
-                res.status(500).send(err.message);
+            if (!fileInfo) {
+                return res.status(404).json({ message: 'File not found' });
             }
-        })
-        .on('error', (err) => {
-            console.error('CSV parsing error:', err);
-            res.status(500).send(err.message);
+
+            const downloadStream = bucket.openDownloadStream(new ObjectId(fileId));
+            
+            await new Promise((resolve, reject) => {
+                downloadStream
+                    .pipe(csv())
+                    .on('data', (data) => {
+                        const industry = data.Industry || 'Unknown';
+                        const dynamicFields = new Map();
+
+                        Object.keys(data).forEach(key => {
+                            if (key !== 'Industry') {
+                                dynamicFields.set(key, detectType(data[key]));
+                            }
+                        });
+
+                        const rowData = {
+                            industry: industry,
+                            dynamicFields: Object.fromEntries(dynamicFields),
+                            fileId: fileId,
+                            filename: fileInfo.filename
+                        };
+                        results.push(rowData);
+                    })
+                    .on('end', resolve)
+                    .on('error', reject);
+            });
+
+            // Save to database and generate AI insights
+            await DataModel.insertMany(results);
+            const aiResponse = await generateAIInsights(results, prompt);
+
+            res.status(200).json({
+                message: 'CSV parsed, data saved to database, and AI insights generated.',
+                aiResponse,
+                rowCount: results.length,
+                filename: fileInfo.filename
+            });
+
+        } finally {
+            await client.close();
+        }
+
+    } catch (err) {
+        console.error('Error processing file:', err);
+        res.status(500).json({
+            message: 'Error processing file',
+            error: err.message
         });
+    }
 };
 
 // Controller to read data from MongoDB
