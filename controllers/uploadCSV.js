@@ -5,6 +5,7 @@ const DataModel = require('../models/dataModel');
 const { detectType, generateAIInsights } = require('../middleware/openaiHelper');  // Import helper functions
 const { MongoClient, GridFSBucket } = require('mongodb');
 const mongoose = require('mongoose');
+const path = require('path');
 
 // MongoDB URI
 const uri = process.env.MONGODB_URI; // Use the environment variable for MongoDB URI
@@ -12,11 +13,12 @@ const uri = process.env.MONGODB_URI; // Use the environment variable for MongoDB
 // Controller to upload CSV file
 exports.uploadCSV = async (req, res) => {
     console.log('file---', req.file);
-    const { path, filename } = req?.file;
 
-    if (!path) {
-        return res.status(400).send('No file uploaded.');
+    if (!req.file) {
+        return res.status(400).send('No file uploaded. Please ensure the file is attached and the field name is correct.');
     }
+
+    const { path, filename } = req.file;
 
     try {
         const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
