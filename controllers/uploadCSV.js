@@ -3,7 +3,7 @@ const fs = require('fs');
 const csv = require('csv-parser');
 const DataModel = require('../models/dataModel');
 const { detectType, generateAIInsights } = require('../middleware/openaiHelper');  // Import helper functions
-const { MongoClient, GridFSBucket } = require('mongodb');
+const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const mongoose = require('mongoose');
 const path = require('path');
 
@@ -109,4 +109,50 @@ exports.readData = (req, res) => {
             console.error('Error reading data:', err);
             res.status(500).send('Error retrieving data from database.');
         });
+};
+
+// Controller to read data by ID or filename
+exports.readDataById = async (req, res) => {
+    try {
+        const { id } = req.query;
+        console.log('Searching for document with ID:', id);
+
+        if (!id) {
+            return res.status(400).json({ message: 'Please provide an id' });
+        }
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: 'Invalid ID format' });
+        }
+
+        // Connect to MongoDB and get the GridFS bucket
+        const client = new MongoClient(uri);
+        await client.connect();
+        const db = client.db('final');
+        const bucket = new GridFSBucket(db);
+
+        try {
+            // Find the file metadata
+            const file = await db.collection('fs.files').findOne({ 
+                _id: new ObjectId(id) 
+            });
+
+            if (!file) {
+                return res.status(404).json({ 
+                    message: 'No file found',
+                    queriedId: id
+                });
+            }
+
+            res.status(200).json(file);
+        } finally {
+            await client.close();
+        }
+    } catch (err) {
+        console.error('Error reading file:', err);
+        res.status(500).json({ 
+            message: 'Error retrieving file from database',
+            error: err.message 
+        });
+    }
 };

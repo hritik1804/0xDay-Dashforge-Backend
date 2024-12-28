@@ -31,6 +31,6 @@ router.post('/upload-csv', upload.single('file'), csvController.uploadCSV);
 router.post('/parse-csv', csvController.parseCSVAndSaveToDB);
 
 // Route to read saved data
-router.get('/read-data', csvController.readData);
+router.get('/data', csvController.readDataById);
 
 module.exports = router;
