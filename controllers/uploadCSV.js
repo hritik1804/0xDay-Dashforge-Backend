@@ -8,7 +8,7 @@ const mongoose = require('mongoose');
 const path = require('path');
 
 // MongoDB URI
-const uri = process.env.MONGODB_URI; // Use the environment variable for MongoDB URI
+const uri = process.env.MONGODB_URI;
 
 // Controller to upload CSV file
 exports.uploadCSV = async (req, res) => {
@@ -21,19 +21,22 @@ exports.uploadCSV = async (req, res) => {
     const { path, filename } = req.file;
 
     try {
-        const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+        const client = new MongoClient(uri);
         await client.connect();
-        const db = client.db('final'); // Use your database name
+        const db = client.db('final');
         const bucket = new GridFSBucket(db);
 
         const uploadStream = bucket.openUploadStream(filename);
-        fs.createReadStream(path).pipe(uploadStream)
-            .on('error', (error) => {
+        fs.createReadStream(path)
+            .pipe(uploadStream)
+            .on('error', async (error) => {
                 console.error('Error uploading file to GridFS:', error);
+                await client.close();
                 res.status(500).send('Error uploading file.');
             })
-            .on('finish', () => {
+            .on('finish', async () => {
                 console.log('File uploaded to GridFS successfully.');
+                await client.close();
                 res.status(200).send(`File uploaded successfully: ${filename}`);
             });
     } catch (error) {
