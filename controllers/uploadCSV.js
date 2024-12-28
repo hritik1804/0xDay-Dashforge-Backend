@@ -217,3 +217,55 @@ exports.readDataById = async (req, res) => {
         });
     }
 };
+
+// Add this new controller to list all CSV files
+exports.listAllFiles = async (req, res) => {
+    try {
+        const client = new MongoClient(uri);
+        await client.connect();
+        const db = client.db('final');
+
+        try {
+            // Query the fs.files collection
+            const files = await db.collection('fs.files')
+                .find({})
+                .project({
+                    filename: 1,
+                    length: 1,
+                    uploadDate: 1,
+                    metadata: 1
+                })
+                .toArray();
+
+            if (!files || files.length === 0) {
+                return res.status(404).json({ 
+                    message: 'No files found' 
+                });
+            }
+
+            // Format the response
+            const formattedFiles = files.map(file => ({
+                id: file._id,
+                filename: file.filename,
+                size: file.length,
+                uploadDate: file.uploadDate,
+                metadata: file.metadata || {}
+            }));
+
+            res.status(200).json({
+                message: 'Files retrieved successfully',
+                files: formattedFiles,
+                count: formattedFiles.length
+            });
+
+        } finally {
+            await client.close();
+        }
+    } catch (err) {
+        console.error('Error listing files:', err);
+        res.status(500).json({ 
+            message: 'Error retrieving files',
+            error: err.message 
+        });
+    }
+};

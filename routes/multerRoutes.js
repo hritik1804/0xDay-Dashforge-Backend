@@ -33,4 +33,7 @@ router.post('/parse-csv', csvController.parseCSVAndSaveToDB);
 // Route to read saved data
 router.get('/data', csvController.readDataById);
 
+// Route to list all CSV files
+router.get('/files', csvController.listAllFiles);
+
 module.exports = router;
