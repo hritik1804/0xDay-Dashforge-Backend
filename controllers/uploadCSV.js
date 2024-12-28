@@ -175,12 +175,8 @@ exports.readData = (req, res) => {
 // Controller to read data by ID or filename
 exports.readDataById = async (req, res) => {
     try {
-        const { id } = req.query;
+        const { id } = req.params;
         console.log('Searching for document with ID:', id);
-
-        if (!id) {
-            return res.status(400).json({ message: 'Please provide an id' });
-        }
 
         if (!ObjectId.isValid(id)) {
             return res.status(400).json({ message: 'Invalid ID format' });
@@ -205,7 +201,35 @@ exports.readDataById = async (req, res) => {
                 });
             }
 
-            res.status(200).json(file);
+            // Create an array to store the CSV data
+            const results = [];
+
+            // Create a read stream from GridFS
+            const downloadStream = bucket.openDownloadStream(new ObjectId(id));
+
+            // Parse the CSV data
+            await new Promise((resolve, reject) => {
+                downloadStream
+                    .pipe(csv())
+                    .on('data', (data) => {
+                        results.push(data);
+                    })
+                    .on('end', resolve)
+                    .on('error', reject);
+            });
+
+            res.status(200).json({
+                message: 'File retrieved successfully',
+                fileInfo: {
+                    id: file._id,
+                    filename: file.filename,
+                    size: file.length,
+                    uploadDate: file.uploadDate
+                },
+                // data: results,
+                rowCount: results.length
+            });
+
         } finally {
             await client.close();
         }
