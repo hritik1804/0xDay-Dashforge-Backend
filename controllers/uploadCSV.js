@@ -1,20 +1,43 @@
+require('dotenv').config();
 const fs = require('fs');
 const csv = require('csv-parser');
 const DataModel = require('../models/dataModel');
 const { detectType, generateAIInsights } = require('../middleware/openaiHelper');  // Import helper functions
+const { MongoClient, GridFSBucket } = require('mongodb');
+const mongoose = require('mongoose');
+
+// MongoDB URI
+const uri = process.env.MONGODB_URI; // Use the environment variable for MongoDB URI
 
 // Controller to upload CSV file
-exports.uploadCSV = (req, res) => {
-
+exports.uploadCSV = async (req, res) => {
     console.log('file---', req.file);
-    const { path } = req?.file;
+    const { path, filename } = req?.file;
 
     if (!path) {
         return res.status(400).send('No file uploaded.');
     }
 
-    res.status(200).send(`File uploaded successfully: ${req.file.filename}`);
+    try {
+        const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+        await client.connect();
+        const db = client.db('final'); // Use your database name
+        const bucket = new GridFSBucket(db);
 
+        const uploadStream = bucket.openUploadStream(filename);
+        fs.createReadStream(path).pipe(uploadStream)
+            .on('error', (error) => {
+                console.error('Error uploading file to GridFS:', error);
+                res.status(500).send('Error uploading file.');
+            })
+            .on('finish', () => {
+                console.log('File uploaded to GridFS successfully.');
+                res.status(200).send(`File uploaded successfully: ${filename}`);
+            });
+    } catch (error) {
+        console.error('Error connecting to MongoDB:', error);
+        res.status(500).send('Error connecting to database.');
+    }
 };
 
 // Controller to parse CSV, save data to DB, and generate AI insights
