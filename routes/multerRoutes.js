@@ -40,7 +40,6 @@ const upload = multer({
 // Route for CSV file upload
 router.post('/upload-csv', upload.single('file'), csvController.uploadCSV);
 
-
 // Route to parse CSV and save to DB
 router.post('/parse-csv', csvController.parseCSVAndSaveToDB);
 
@@ -48,6 +47,6 @@ router.post('/parse-csv', csvController.parseCSVAndSaveToDB);
 router.get('/data/:id', csvController.readDataById);
 
 // Route to list all CSV files
-router.get('/files', csvController.listAllFiles);
+// router.get('/files', csvController.listAllFiles);
 
 module.exports = router;

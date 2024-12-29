@@ -2,7 +2,7 @@ require('dotenv').config();
 const fs = require('fs');
 const csv = require('csv-parser');
 const DataModel = require('../models/dataModel');
-const { generateAIInsights } = require('../middleware/openaiHelper');  // Import helper functions
+const { generateAIInsights } = require('../middleware/openaiHelper'); // Assuming you have an AI helper function
 const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const mongoose = require('mongoose');
 const path = require('path');
@@ -10,39 +10,33 @@ const path = require('path');
 // MongoDB URI
 const uri = process.env.MONGODB_URI;
 
-// Add this helper function at the top of the file
+// Helper function to detect the type of a field value
 function detectType(value) {
-    // Remove any whitespace
     if (typeof value === 'string') {
         value = value.trim();
     }
-    
-    // Check if value is empty
+
     if (value === '' || value === null || value === undefined) {
         return { type: 'null', value: null };
     }
-    
-    // Check if value is a number
+
     if (!isNaN(value) && value !== '') {
         return { type: 'number', value: parseFloat(value) };
     }
-    
-    // Check if value is a boolean
+
     if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
         return { type: 'boolean', value: value.toLowerCase() === 'true' };
     }
-    
-    // Check if value is a date
+
     const dateValue = new Date(value);
     if (!isNaN(dateValue) && value.length > 5) {
         return { type: 'date', value: dateValue };
     }
-    
-    // Default to string
+
     return { type: 'string', value: value };
 }
 
-// Add this helper function to process crew data
+// Process crew data
 const processCrewData = (crewString) => {
     if (!crewString) return [];
     
@@ -70,7 +64,7 @@ const processCrewData = (crewString) => {
     }
 };
 
-// Controller to upload CSV file
+// Upload CSV file
 exports.uploadCSV = async (req, res) => {
     console.log('Starting file upload process...');
     console.log('File details:', req.file);
@@ -98,14 +92,12 @@ exports.uploadCSV = async (req, res) => {
         console.log('Starting file stream to GridFS...');
         const uploadStream = bucket.openUploadStream(filename);
         
-        // Add error handler for the read stream
         const readStream = fs.createReadStream(path);
         readStream.on('error', (error) => {
             console.error('Error reading file:', error);
             res.status(500).send('Error reading uploaded file.');
         });
 
-        // Wrap the pipe operation in a promise
         await new Promise((resolve, reject) => {
             readStream
                 .pipe(uploadStream)
@@ -119,15 +111,9 @@ exports.uploadCSV = async (req, res) => {
                 });
         });
 
-        // Clean up the temporary file
-        try {
-            fs.unlinkSync(path);
-            console.log('Temporary file cleaned up');
-        } catch (cleanupError) {
-            console.warn('Warning: Could not delete temporary file:', cleanupError);
-        }
+        fs.unlinkSync(path);
+        console.log('Temporary file cleaned up');
 
-        console.log('Upload process completed successfully');
         res.status(200).json({
             message: `File uploaded successfully: ${filename}`,
             fileId: uploadStream.id.toString(),
@@ -136,14 +122,9 @@ exports.uploadCSV = async (req, res) => {
 
     } catch (error) {
         console.error('Error in upload process:', error);
-        // Try to clean up the temporary file in case of error
-        try {
-            if (fs.existsSync(path)) {
-                fs.unlinkSync(path);
-                console.log('Temporary file cleaned up after error');
-            }
-        } catch (cleanupError) {
-            console.warn('Warning: Could not delete temporary file:', cleanupError);
+        if (fs.existsSync(path)) {
+            fs.unlinkSync(path);
+            console.log('Temporary file cleaned up after error');
         }
 
         res.status(500).json({
@@ -153,8 +134,7 @@ exports.uploadCSV = async (req, res) => {
     }
 };
 
-// Controller to parse CSV, save data to DB, and generate AI insights
-// CSV Upload and Parsing
+// Parse CSV, save to DB, generate AI insights
 exports.parseCSVAndSaveToDB = async (req, res) => {
     const client = new MongoClient(uri);
     
@@ -169,7 +149,6 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
         const db = client.db('final');
         const bucket = new GridFSBucket(db);
 
-        // Delete existing records for this file
         await DataModel.deleteMany({ fileId });
 
         const downloadStream = bucket.openDownloadStream(new ObjectId(fileId));
@@ -181,21 +160,22 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
         await new Promise((resolve, reject) => {
             downloadStream
                 .pipe(csv({
-                    strict: false, // Be more lenient with parsing
+                    strict: false,
                     skipLines: 0,
                     maxRows: Infinity,
                     headers: true,
-                    skipEmptyLines: true, // Skip empty lines
-                    ignoreEmpty: true, // Ignore empty fields
-                    trim: true // Trim whitespace from fields
+                    skipEmptyLines: true,
+                    ignoreEmpty: true,
+                    trim: true
                 }))
                 .on('headers', (headerList) => {
-                    headers = headerList;
-                    console.log('CSV Headers:', headers);
+                    // headers = headerList;
+                    console.log('CSV Headers:', headerList);
                 })
                 .on('data', async (row) => {
                     try {
-                        // Validate row data
+                        console.log('Row data received:', row);
+
                         if (!row || Object.keys(row).length === 0) {
                             console.warn('Skipping empty row');
                             return;
@@ -203,7 +183,6 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
 
                         const dynamicFields = {};
                         
-                        // Process only the fields that exist in headers
                         headers?.forEach(header => {
                             const value = row[header];
                             if (value !== '' && value !== undefined && value !== null) {
@@ -212,7 +191,6 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
                             }
                         });
 
-                        // Only add row if it has data
                         if (Object.keys(dynamicFields).length > 0) {
                             const document = new DataModel({
                                 fileId,
@@ -236,9 +214,11 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
                 .on('end', async () => {
                     try {
                         if (batch.length > 0) {
+                            console.log('Inserting final batch of records...');
                             await DataModel.insertMany(batch);
                             results.push(...batch);
                         }
+                        console.log('CSV parsing complete. Total records:', results.length);
                         resolve();
                     } catch (error) {
                         reject(error);
@@ -250,9 +230,9 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
                 });
         });
 
-        // Generate AI insights only if there are results
         let aiInsights = null;
         if (results.length > 0) {
+            console.log('Generating AI insights...');
             const prompt = `Analyze the following data and generate insights, trends, or notable patterns:`;
             aiInsights = await generateAIInsights(results, prompt);
         }
@@ -262,154 +242,56 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
             message: 'CSV parsed, saved, and AI insights generated successfully',
             recordCount: results.length,
             aiInsights,
-            sampleData: results.slice(0, 2).map(doc => ({
-                fileId: doc.fileId,
-                fields: doc.dynamicFields
-            }))
+            sampleData: results.slice(0, 5)
         });
 
     } catch (error) {
         console.error('Error parsing CSV:', error);
         res.status(500).json({
-            success: false,
-            message: 'Error parsing CSV file',
+            message: 'Error parsing and saving CSV data',
             error: error.message
         });
     } finally {
-        await client.close();
+        client.close();
     }
 };
 
-// Controller to read data from MongoDB
-exports.readData = (req, res) => {
-    DataModel.find({})
-        .then(data => {
-            res.status(200).json(data);
-        })
-        .catch(err => {
-            console.error('Error reading data:', err);
-            res.status(500).send('Error retrieving data from database.');
-        });
+// Read data by ID
+exports.readDataById = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const data = await DataModel.findById(id);
+        if (!data) {
+            return res.status(404).json({ message: 'Data not found' });
+        }
+        res.status(200).json(data);
+    } catch (error) {
+        console.error('Error reading data:', error);
+        res.status(500).json({ message: 'Error retrieving data', error: error.message });
+    }
 };
 
-// Controller to read data by ID or filename
-exports.readDataById = async (req, res) => {
+// List all uploaded files
+exports.listAllFiles = async (req, res) => {
+    const client = new MongoClient(uri);
+
     try {
-        const { id } = req.params;
-        console.log('Searching for document with ID:', id);
-
-        if (!ObjectId.isValid(id)) {
-            return res.status(400).json({ message: 'Invalid ID format' });
-        }
-
-        // Connect to MongoDB and get the GridFS bucket
-        const client = new MongoClient(uri);
         await client.connect();
         const db = client.db('final');
         const bucket = new GridFSBucket(db);
+        const files = [];
 
-        try {
-            // Find the file metadata
-            const file = await db.collection('fs.files').findOne({ 
-                _id: new ObjectId(id) 
-            });
-
-            if (!file) {
-                return res.status(404).json({ 
-                    message: 'No file found',
-                    queriedId: id
-                });
-            }
-
-            // Create an array to store the CSV data
-            const results = [];
-
-            // Create a read stream from GridFS
-            const downloadStream = bucket.openDownloadStream(new ObjectId(id));
-
-            // Parse the CSV data
-            await new Promise((resolve, reject) => {
-                downloadStream
-                    .pipe(csv())
-                    .on('data', (data) => {
-                        results.push(data);
-                    })
-                    .on('end', resolve)
-                    .on('error', reject);
-            });
-
-            res.status(200).json({
-                message: 'File retrieved successfully',
-                fileInfo: {
-                    id: file._id,
-                    filename: file.filename,
-                    size: file.length,
-                    uploadDate: file.uploadDate
-                },
-                data: results,
-                rowCount: results.length
-            });
-
-        } finally {
-            await client.close();
-        }
-    } catch (err) {
-        console.error('Error reading file:', err);
-        res.status(500).json({ 
-            message: 'Error retrieving file from database',
-            error: err.message 
+        const cursor = bucket.find();
+        await cursor.forEach((file) => {
+            files.push(file);
         });
-    }
-};
 
-// Add this new controller to list all CSV files
-exports.listAllFiles = async (req, res) => {
-    try {
-        const client = new MongoClient(uri);
-        await client.connect();
-        const db = client.db('final');
-
-        try {
-            // Query the fs.files collection
-            const files = await db.collection('fs.files')
-                .find({})
-                .project({
-                    filename: 1,
-                    length: 1,
-                    uploadDate: 1,
-                    metadata: 1
-                })
-                .toArray();
-
-            if (!files || files.length === 0) {
-                return res.status(404).json({ 
-                    message: 'No files found' 
-                });
-            }
-
-            // Format the response
-            const formattedFiles = files.map(file => ({
-                id: file._id,
-                filename: file.filename,
-                size: file.length,
-                uploadDate: file.uploadDate,
-                metadata: file.metadata || {}
-            }));
-
-            res.status(200).json({
-                message: 'Files retrieved successfully',
-                files: formattedFiles,
-                count: formattedFiles.length
-            });
-
-        } finally {
-            await client.close();
-        }
-    } catch (err) {
-        console.error('Error listing files:', err);
-        res.status(500).json({ 
-            message: 'Error retrieving files',
-            error: err.message 
-        });
+        res.status(200).json(files);
+    } catch (error) {
+        console.error('Error listing files:', error);
+        res.status(500).json({ message: 'Error listing files', error: error.message });
+    } finally {
+        client.close();
     }
 };
