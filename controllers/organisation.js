@@ -2,7 +2,7 @@ const Organization = require('../models/organisationModel');
 
 // Create a new organization
 exports.createOrganization = async (req, res) => {
-  const { companyName, location, typeOrganisation, teamSize, website } = req.body;
+  const { companyName, location, typeOrganisation, teamSize, website, csvFileName } = req.body;
 
   try {
     const newOrganization = new Organization({
@@ -11,6 +11,7 @@ exports.createOrganization = async (req, res) => {
       typeOrganisation,
       teamSize,
       website,
+      csvFileName
     });
 
     await newOrganization.save();

@@ -21,6 +21,10 @@ const organizationSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  csvFileName: {
+    type: String,
+    required: false,
+  },
 });
 
 const Organization = mongoose.model('Organization', organizationSchema);
