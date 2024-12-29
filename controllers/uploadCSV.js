@@ -156,6 +156,8 @@ exports.uploadCSV = async (req, res) => {
 // Controller to parse CSV, save data to DB, and generate AI insights
 // CSV Upload and Parsing
 exports.parseCSVAndSaveToDB = async (req, res) => {
+    const client = new MongoClient(uri);
+    
     try {
         const { fileId } = req.body;
         
@@ -163,7 +165,6 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
             return res.status(400).json({ message: 'Please provide a fileId' });
         }
 
-        const client = new MongoClient(uri);
         await client.connect();
         const db = client.db('final');
         const bucket = new GridFSBucket(db);
@@ -171,87 +172,101 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
         // Delete existing records for this file
         await DataModel.deleteMany({ fileId });
 
-        try {
-            const downloadStream = bucket.openDownloadStream(new ObjectId(fileId));
-            const results = [];
-            
-            await new Promise((resolve, reject) => {
-                downloadStream
-                    .pipe(csv())
-                    .on('data', (row) => {
-                        // Convert row data to dynamicFields format
+        const downloadStream = bucket.openDownloadStream(new ObjectId(fileId));
+        const results = [];
+        const BATCH_SIZE = 1000;
+        let batch = [];
+        let headers = null;
+
+        await new Promise((resolve, reject) => {
+            downloadStream
+                .pipe(csv({
+                    strict: false, // Be more lenient with parsing
+                    skipLines: 0,
+                    maxRows: Infinity,
+                    headers: true,
+                    skipEmptyLines: true, // Skip empty lines
+                    ignoreEmpty: true, // Ignore empty fields
+                    trim: true // Trim whitespace from fields
+                }))
+                .on('headers', (headerList) => {
+                    headers = headerList;
+                    console.log('CSV Headers:', headers);
+                })
+                .on('data', async (row) => {
+                    try {
+                        // Validate row data
+                        if (!row || Object.keys(row).length === 0) {
+                            console.warn('Skipping empty row');
+                            return;
+                        }
+
                         const dynamicFields = {};
                         
-                        Object.entries(row).forEach(([key, value]) => {
-                            // Skip empty values
-                            if (value === '' || value === undefined || value === null) {
-                                return;
+                        // Process only the fields that exist in headers
+                        headers?.forEach(header => {
+                            const value = row[header];
+                            if (value !== '' && value !== undefined && value !== null) {
+                                const { type, value: processedValue } = detectType(value);
+                                dynamicFields[header] = { type, value: processedValue };
                             }
-
-                            // Process the value based on type
-                            let processedValue;
-                            let type = 'string';
-
-                            // Try to detect numbers
-                            if (!isNaN(value) && value !== '') {
-                                processedValue = parseFloat(value);
-                                type = 'number';
-                            } 
-                            // Try to detect dates
-                            else if (!isNaN(Date.parse(value))) {
-                                processedValue = new Date(value);
-                                type = 'date';
-                            }
-                            // Handle boolean values
-                            else if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
-                                processedValue = value.toLowerCase() === 'true';
-                                type = 'boolean';
-                            }
-                            // Default to string
-                            else {
-                                processedValue = value;
-                                type = 'string';
-                            }
-
-                            dynamicFields[key] = {
-                                type,
-                                value: processedValue
-                            };
                         });
 
-                        // Create document for this row
-                        const document = new DataModel({
-                            fileId,
-                            filename: req.body.filename,
-                            dynamicFields,
-                            uploadDate: new Date()
-                        });
+                        // Only add row if it has data
+                        if (Object.keys(dynamicFields).length > 0) {
+                            const document = new DataModel({
+                                fileId,
+                                filename: req.body.filename,
+                                dynamicFields,
+                                uploadDate: new Date()
+                            });
 
-                        results.push(document);
-                    })
-                    .on('end', () => resolve(results))
-                    .on('error', reject);
-            });
+                            batch.push(document);
+                            
+                            if (batch.length >= BATCH_SIZE) {
+                                await DataModel.insertMany(batch);
+                                results.push(...batch);
+                                batch = [];
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error processing row:', error, 'Row data:', row);
+                    }
+                })
+                .on('end', async () => {
+                    try {
+                        if (batch.length > 0) {
+                            await DataModel.insertMany(batch);
+                            results.push(...batch);
+                        }
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                })
+                .on('error', (error) => {
+                    console.error('CSV parsing error:', error);
+                    reject(error);
+                });
+        });
 
-            // Save all documents
-            if (results.length > 0) {
-                await DataModel.insertMany(results);
-                console.log(`Saved ${results.length} records to database`);
-            }
-
-            res.status(200).json({
-                success: true,
-                message: 'CSV parsed and saved successfully',
-                recordCount: results.length,
-                sampleData: results.slice(0, 2).map(doc => ({
-                    fileId: doc.fileId,
-                    fields: doc.dynamicFields
-                }))
-            });
-
-        } finally {
-            await client.close();
+        // Generate AI insights only if there are results
+        let aiInsights = null;
+        if (results.length > 0) {
+            const prompt = `Analyze the following data and generate insights, trends, or notable patterns:`;
+            aiInsights = await generateAIInsights(results, prompt);
         }
+
+        res.status(200).json({
+            success: true,
+            message: 'CSV parsed, saved, and AI insights generated successfully',
+            recordCount: results.length,
+            aiInsights,
+            sampleData: results.slice(0, 2).map(doc => ({
+                fileId: doc.fileId,
+                fields: doc.dynamicFields
+            }))
+        });
 
     } catch (error) {
         console.error('Error parsing CSV:', error);
@@ -260,6 +275,8 @@ exports.parseCSVAndSaveToDB = async (req, res) => {
             message: 'Error parsing CSV file',
             error: error.message
         });
+    } finally {
+        await client.close();
     }
 };
 
