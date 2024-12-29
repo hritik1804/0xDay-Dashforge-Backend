@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema({
   gmail: { type: String, required: true, unique: true },
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  website: { type: String, required: true },
+//   website: { type: String, required: true },
 }, {
   timestamps: true,
 });

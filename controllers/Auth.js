@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 
 // Sign up a new user
 exports.signup = async (req, res) => {
-  const { f_name, m_name, l_name, gmail, username, password, website } = req.body;
+  const { f_name, m_name, l_name, gmail, username, password,  } = req.body;
   console.log(req.body);
 
   try {
@@ -19,7 +19,6 @@ exports.signup = async (req, res) => {
       gmail,
       username,
       password: hashedPassword,
-      website,
     });
     
 
@@ -81,7 +80,6 @@ exports.getCurrentUser = async (req, res) => {
       l_name: user.l_name,
       username: user.username,
       gmail: user.gmail,
-      website: user.website,
     });
   } catch (error) {
     console.error('Error fetching user:', error);
