@@ -3,12 +3,12 @@ const router = express.Router();
 const { createOrganization, deleteOrganization, getOrganization } = require('../controllers/organisation');
 
 // Create an organization
-router.post('/create', createOrganization);
+router.post('/createCompany', createOrganization);
 
 // Delete an organization by ID
-router.delete('/delete/:id', deleteOrganization);
+router.delete('/deleteCompany/:id', deleteOrganization);
 
 // Get organization details by ID
-router.get('/get/:id', getOrganization);
+router.get('/fetchCompany/:id', getOrganization);
 
 module.exports = router;
