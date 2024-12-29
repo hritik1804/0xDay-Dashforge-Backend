@@ -1,20 +1,25 @@
 const mongoose = require('mongoose');
 
 const dataSchema = new mongoose.Schema({
-    // Add your schema fields here, for example:
+    fileId: {
+        type: String,
+        required: true
+    },
     filename: {
         type: String,
         required: true
     },
+    dynamicFields: {
+        type: Map,
+        of: new mongoose.Schema({
+            type: String,
+            value: mongoose.Schema.Types.Mixed
+        }, { _id: false })
+    },
     uploadDate: {
         type: Date,
         default: Date.now
-    },
-    data: {
-        type: Array,
-        required: true
     }
-    // Add any other fields you need for your CSV data
-});
+}, { strict: false });
 
 module.exports = mongoose.model('Data', dataSchema); 

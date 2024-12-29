@@ -11,17 +11,31 @@ if (!fs.existsSync(uploadDir)){
     fs.mkdirSync(uploadDir);
 }
 
-// Setup multer to handle file uploads
+// Setup multer with 300MB file size limit
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/');  // Store uploaded files in the 'uploads' folder
+        cb(null, 'uploads/');
     },
     filename: (req, file, cb) => {
-        cb(null, file.originalname);  // Keep the original file name
+        cb(null, file.originalname);
     }
 });
-const upload = multer({ storage: storage });
 
+const upload = multer({ 
+    storage: storage,
+    limits: {
+        fileSize: 300 * 1024 * 1024, // 300MB in bytes
+        files: 1 // Maximum number of files
+    },
+    fileFilter: (req, file, cb) => {
+        // Accept only CSV files
+        if (file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel') {
+            cb(null, true);
+        } else {
+            cb(new Error('Only CSV files are allowed'));
+        }
+    }
+});
 
 // Route for CSV file upload
 router.post('/upload-csv', upload.single('file'), csvController.uploadCSV);
