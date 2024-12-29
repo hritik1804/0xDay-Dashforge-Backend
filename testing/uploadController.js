@@ -1,30 +1,34 @@
-const csvParser = require('csv-parser');
-const fs = require('fs');
+const csvParserModel = require('./csvParserModel');
+const openAIService = require('./openAIService');
+const DataEntry = require('./dataEntry');
 
-exports.parseCSV = (filePath, queryField, queryValue) => {
-  return new Promise((resolve, reject) => {
-    const results = [];
+exports.uploadCSV = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).send('No file uploaded.');
+  }
 
-    // Parse CSV file dynamically
-    fs.createReadStream(filePath)
-      .pipe(csvParser())
-      .on('data', (row) => {
-        // If queryField is specified, apply the query filter dynamically
-        if (queryField && queryValue) {
-          if (row[queryField] && row[queryField].toString() === queryValue.toString()) {
-            results.push(row); // Only push rows that match the query
-          }
-        } else {
-          // If no queryField is provided, push all rows (no filtering)
-          results.push(row);
-        }
-      })
-      .on('end', () => {
-        console.log('CSV file successfully processed');
-        resolve(results); // Return the filtered or full dataset
-      })
-      .on('error', (error) => {
-        reject(error); // Reject in case of error
-      });
-  });
+  const prompt = req.body.prompt || 'Filter and analyze this data';
+  const filePath = req.file.path;
+  
+  try {
+    const data = await csvParserModel.parseCSV(filePath);
+    const filteredData = await openAIService.filterDataWithOpenAI(data, prompt);
+    console.log("filteredData",filteredData);
+    
+    // Create a new DataEntry document with the filtered data
+    const dataEntry = new DataEntry({
+      filteredData: JSON.stringify(filteredData) // Convert to string if it's an object
+    });
+    
+    // Save the single document
+    await dataEntry.save();
+    
+    res.json({ 
+      message: 'Data processed and stored successfully',
+      entriesProcessed: 1
+    });
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Error processing and storing data' });
+  }
 };

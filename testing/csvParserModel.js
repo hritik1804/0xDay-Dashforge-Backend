@@ -16,8 +16,7 @@ exports.parseCSV = (filePath) => {
         resolve(results); // Return parsed data
       })
       .on('error', (error) => {
-        reject(error);// Reject in case of error
+        reject(error); // Reject in case of error
       });
-      console.log("results",results);
   });
 };
