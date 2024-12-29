@@ -58,3 +58,12 @@ exports.getOrganization = async (req, res) => {
     }
   };
   
+  exports.getAllOrganisations = async (req, res) => {
+    try {
+        const organisations = await Organization.find();
+        res.json(organisations);
+    } catch (error) {
+        console.error('Error fetching organisations:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+  };
