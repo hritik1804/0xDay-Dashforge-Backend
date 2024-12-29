@@ -43,7 +43,7 @@ app.use('/api', queryRoutes);
 app.use('/api', organisationRoutes);
 app.use('/api/auth', authRoutes);
 // Testing routes
-app.use('/upload', uploadRoutes);
+app.use('/api/upload', uploadRoutes);
 
 
 

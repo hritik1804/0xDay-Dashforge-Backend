@@ -1,26 +1,30 @@
-const csvParserModel = require('./csvParserModel');
-const openAIService = require('./openAIService');
+const csvParser = require('csv-parser');
+const fs = require('fs');
 
-exports.uploadsCSV = (req, res) => {
-  if (!req.file) {
-    return res.status(400).send('No file uploaded.');
-  }
+exports.parseCSV = (filePath, queryField, queryValue) => {
+  return new Promise((resolve, reject) => {
+    const results = [];
 
-  const filePath = req.file.path;
-  
-  // Parse CSV file
-  csvParserModel.parseCSV(filePath)
-    .then((data) => {
-      // Send data to OpenAI for filtering
-      openAIService.filterDataWithOpenAI(data)
-        .then((filteredData) => {
-          res.json({ filteredData });
-        })
-        .catch((err) => {
-          res.status(500).json({ error: 'Error processing data with OpenAI' });
-        });
-    })
-    .catch((err) => {
-      res.status(500).json({ error: 'Error parsing CSV file' });
-    });
+    // Parse CSV file dynamically
+    fs.createReadStream(filePath)
+      .pipe(csvParser())
+      .on('data', (row) => {
+        // If queryField is specified, apply the query filter dynamically
+        if (queryField && queryValue) {
+          if (row[queryField] && row[queryField].toString() === queryValue.toString()) {
+            results.push(row); // Only push rows that match the query
+          }
+        } else {
+          // If no queryField is provided, push all rows (no filtering)
+          results.push(row);
+        }
+      })
+      .on('end', () => {
+        console.log('CSV file successfully processed');
+        resolve(results); // Return the filtered or full dataset
+      })
+      .on('error', (error) => {
+        reject(error); // Reject in case of error
+      });
+  });
 };
