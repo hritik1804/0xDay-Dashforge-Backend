@@ -2,10 +2,10 @@ const Organization = require('../models/organisationModel');
 
 // Create a new organization
 exports.createOrganization = async (req, res) => {
-  const { companyName, location, typeOrganisation, teamSize, website, csvFileName } = req.body;
-
   try {
-    const newOrganization = new Organization({
+    const { companyName, location, typeOrganisation, teamSize, website, csvFileName } = req.body;
+
+    const organization = new Organization({
       companyName,
       location,
       typeOrganisation,
@@ -14,8 +14,8 @@ exports.createOrganization = async (req, res) => {
       csvFileName
     });
 
-    await newOrganization.save();
-    res.status(201).json({ message: 'Organization created successfully', newOrganization });
+    await organization.save();
+    res.status(201).json(organization);
   } catch (error) {
     console.error('Error creating organization:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -61,7 +61,7 @@ exports.getOrganization = async (req, res) => {
   
   exports.getAllOrganisations = async (req, res) => {
     try {
-        const organisations = await Organization.find();
+        const organisations = await Organization.find({});
         res.json(organisations);
     } catch (error) {
         console.error('Error fetching organisations:', error);
