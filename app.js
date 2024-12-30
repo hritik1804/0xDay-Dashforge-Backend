@@ -9,6 +9,7 @@ const multerRoutes = require('./routes/multerRoutes');
 const queryRoutes = require('./routes/queryRoutes');
 const organisationRoutes = require('./routes/organisation');
 const uploadRoutes = require('./testing/uploadRoutes');
+const analysisRoutes = require('./testing/analysisRoutes');
 // const { requireSession } = require('@clerk/clerk-sdk-node'); // Directly use requireSession middleware
 // const protectedRoutes = require('./routes/protectedRoutes');
 
@@ -44,8 +45,7 @@ app.use('/api', organisationRoutes);
 app.use('/api/auth', authRoutes);
 // Testing routes
 app.use('/api', uploadRoutes);
-
-
+app.use('/api', analysisRoutes);
 
 // Add these headers to handle large files and CORS if needed
 app.use((req, res, next) => {
