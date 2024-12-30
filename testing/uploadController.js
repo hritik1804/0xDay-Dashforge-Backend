@@ -91,13 +91,11 @@ exports.analyzeOrganizationData = async (req, res) => {
     }
 
     try {
-        // Find the organization and its associated data
         const organization = await Organization.findById(organizationId);
         if (!organization) {
             return res.status(404).json({ error: 'Organization not found' });
         }
 
-        // Get the most recent data entry for this organization
         const dataEntry = await DataEntry.findOne({ 
             organizationId: organizationId 
         }).sort({ createdAt: -1 });
@@ -108,27 +106,95 @@ exports.analyzeOrganizationData = async (req, res) => {
             });
         }
 
-        // Parse the stored data back to JSON
         const csvData = JSON.parse(dataEntry.filteredData);
+        console.log('CSV Data:', csvData);
 
-        // Process with OpenAI
         const analysisResult = await openAIService.filterDataWithOpenAI(
             csvData, 
             prompt
         );
+        
+        console.log('Analysis Result:', analysisResult);
+
+        // Restructure the statistics into method-based key-value pairs
+        const methodBasedStats = {
+            overview: {
+                name: "Overview Statistics",
+                value: {
+                    totalRecords: analysisResult.counts.totalRecords,
+                    uniqueLocations: analysisResult.counts.uniqueValues.locations,
+                    uniqueManagers: analysisResult.counts.uniqueValues.managers,
+                    uniqueDepartments: analysisResult.counts.uniqueValues.departmentTypes
+                }
+            },
+            management: {
+                name: "Management Distribution",
+                value: {
+                    withManager: analysisResult.counts.categoryCounts.withManager,
+                    withoutManager: analysisResult.counts.categoryCounts.withoutManager,
+                    managementRatio: `${Math.round((analysisResult.counts.categoryCounts.withManager / analysisResult.counts.totalRecords) * 100)}%`
+                }
+            },
+            locations: {
+                name: "Location Distribution",
+                value: analysisResult.counts.categoryCounts.byLocation
+            }
+        };
+
+        // Restructure insights into method-based categories
+        const methodBasedInsights = analysisResult.insights.reduce((acc, insight) => {
+            const category = insight.category.toLowerCase().replace(/\s+/g, '_');
+            if (!acc[category]) {
+                acc[category] = {
+                    name: insight.category,
+                    value: []
+                };
+            }
+            acc[category].value.push(insight.insight);
+            return acc;
+        }, {});
 
         res.json({
-            message: 'Analysis completed successfully',
-            organizationName: organization.companyName,
-            fileName: dataEntry.fileName,
-            analysis: analysisResult
+            status: {
+                name: "Status",
+                value: "Analysis completed successfully"
+            },
+            organization: {
+                name: "Organization Details",
+                value: {
+                    name: organization.companyName,
+                    fileName: dataEntry.fileName
+                }
+            },
+            statistics: {
+                name: "Statistical Analysis",
+                value: methodBasedStats
+            },
+            insights: {
+                name: "Analysis Insights",
+                value: methodBasedInsights
+            },
+            metadata: {
+                name: "Analysis Metadata",
+                value: {
+                    dataEntryId: dataEntry._id,
+                    recordCount: Array.isArray(csvData) ? csvData.length : 0,
+                    analysisTimestamp: new Date().toISOString()
+                }
+            }
         });
 
     } catch (err) {
         console.error('Error during analysis:', err);
         res.status(500).json({ 
-            error: 'Error processing analysis request',
-            details: err.message 
+            error: {
+                name: "Error",
+                value: {
+                    message: 'Error processing analysis request',
+                    details: err.message,
+                    stack: err.stack
+                }
+            }
         });
     }
 };

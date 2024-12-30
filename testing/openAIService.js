@@ -68,10 +68,7 @@ exports.filterDataWithOpenAI = async (data, prompt) => {
         // Parse the response into an array
         const analysisArray = JSON.parse(analysisText);
 
-        // Verify it's an array
-        // if (!Array.isArray(analysisArray)) {
-        //     throw new Error('OpenAI response is not in the expected array format');
-        // }
+    
 
         return analysisArray;
 
