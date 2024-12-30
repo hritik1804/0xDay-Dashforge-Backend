@@ -1,122 +1,80 @@
-// const csvParserModel = require('./csvParserModel');
-// const openAIService = require('./openAIService');
-// const DataEntry = require('./dataEntry');
-// const Organization = require('../models/organisationModel');
-
-// exports.uploadCSV = async (req, res) => {
-//   if (!req.file) {
-//     return res.status(400).send('No file uploaded.');
-//   }
-
-//   const organizationId = req.body.organizationId;
-//   if (!organizationId) {
-//     return res.status(400).send('Organization ID is required.');
-//   }
-
-//   const prompt = req.body.prompt || 'Filter and analyze this data';
-//   const filePath = req.file.path;
-  
-//   try {
-//     const organization = await Organization.findById(organizationId);
-//     if (!organization) {
-//       return res.status(404).json({ error: 'Organization not found' });
-//     }
-
-//     organization.csvFileName = req.file.originalname;
-//     await organization.save();
-
-//     const data = await csvParserModel.parseCSV(filePath);
-//     const filteredData = await openAIService.filterDataWithOpenAI(data, prompt);
-//     // console.log("filteredData", filteredData);
-    
-//     const dataEntry = new DataEntry({
-//       organizationId: organizationId,
-//       filteredData: JSON.stringify(filteredData),
-//       fileName: req.file.originalname
-//     });
-    
-//     await dataEntry.save();
-    
-//     res.json({ 
-//       message: 'Data processed and stored successfully',
-//       entriesProcessed: 1,
-//       organizationId: organizationId
-//     });
-//   } catch (err) {
-//     console.error('Error:', err);
-//     res.status(500).json({ error: 'Error processing and storing data' });
-//   }
-// };
-
-
-const csvParserModel = require('./csvParserModel');
-const DataEntry = require('./dataEntry');
-const Organization = require('../models/organisationModel');
+const multer = require('multer');
+const csv = require('csv-parser');
 const fs = require('fs');
+const Organization = require('../models/organisationModel');
+const DataEntry = require('./dataEntry');
+const OpenAI = require('openai');
+
+// Configure multer for file upload
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/') // Make sure this directory exists
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + '-' + file.originalname)
+    }
+});
+
+const upload = multer({ storage: storage });
 
 exports.uploadCSV = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).send('No file uploaded.');
-  }
-
-  const organizationId = req.body.organizationId;
-  if (!organizationId) {
-    return res.status(400).send('Organization ID is required.');
-  }
-
-  const filePath = req.file.path;
-  
-  try {
-    // Check if organization exists
-    const organization = await Organization.findById(organizationId);
-    if (!organization) {
-      return res.status(404).json({ error: 'Organization not found' });
-    }
-
-    // Parse CSV file
-    const data = await csvParserModel.parseCSV(filePath);
-    
-    // Update organization with CSV filename
-    organization.csvFileName = req.file.originalname;
-    await organization.save();
-
-    // Create a new DataEntry document
-    const dataEntry = new DataEntry({
-      organizationId: organizationId,
-      filteredData: JSON.stringify(data), // Store the parsed CSV data
-      fileName: req.file.originalname
-    });
-    
-    await dataEntry.save();
-    
-    // Log for debugging
-    console.log('Data Entry saved:', {
-      id: dataEntry._id,
-      organizationId: dataEntry.organizationId,
-      fileName: dataEntry.fileName
-    });
-
-    res.json({ 
-      message: 'CSV file uploaded and stored successfully',
-      fileName: req.file.originalname,
-      organizationId: organizationId,
-      dataEntryId: dataEntry._id // Include this for verification
-    });
-
-  } catch (err) {
-    console.error('Error during upload:', err);
-    res.status(500).json({ 
-      error: 'Error processing and storing CSV file',
-      details: err.message 
-    });
-  } finally {
-    // Clean up: remove the temporary file
     try {
-      fs.unlinkSync(filePath);
-    } catch (err) {
-      console.error('Error removing temporary file:', err);
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const organizationId = req.body.organizationId;
+        if (!organizationId) {
+            return res.status(400).json({ error: 'Organization ID is required' });
+        }
+
+        // Find organization
+        const organization = await Organization.findById(organizationId);
+        if (!organization) {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        // Parse CSV
+        const results = [];
+        await new Promise((resolve, reject) => {
+            fs.createReadStream(req.file.path)
+                .pipe(csv())
+                .on('data', (data) => results.push(data))
+                .on('end', () => resolve())
+                .on('error', (error) => reject(error));
+        });
+
+        // Update organization
+        organization.csvFileName = req.file.originalname;
+        await organization.save();
+
+        // Create data entry
+        const dataEntry = new DataEntry({
+            organizationId: organizationId,
+            filteredData: JSON.stringify(results),
+            fileName: req.file.originalname
+        });
+
+        await dataEntry.save();
+
+        // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
+
+        res.json({
+            message: 'File uploaded successfully',
+            organization: organization.companyName,
+            fileName: req.file.originalname,
+            rowCount: results.length,
+            preview: results.slice(0, 2) // First two rows as preview
+        });
+
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({
+            error: 'Error uploading file',
+            details: error.message
+        });
     }
-  }
 };
 
 
@@ -190,5 +148,51 @@ exports.checkOrganizationData = async (req, res) => {
       });
   } catch (err) {
       res.status(500).json({ error: err.message });
+  }
+};
+
+exports.analyzeOrganizationData = async (req, res) => {
+  const { organizationId } = req.params;
+  const { prompt } = req.body;
+
+  if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required for analysis' });
+  }
+
+  try {
+      const organization = await Organization.findById(organizationId);
+      if (!organization) {
+          return res.status(404).json({ error: 'Organization not found' });
+      }
+
+      const dataEntry = await DataEntry.findOne({ 
+          organizationId: organizationId 
+      }).sort({ createdAt: -1 });
+
+      if (!dataEntry) {
+          return res.status(404).json({ 
+              error: 'No CSV data found for this organization' 
+          });
+      }
+
+      const csvData = JSON.parse(dataEntry.filteredData);
+      const analysisResult = await openAIService.filterDataWithOpenAI(
+          csvData, 
+          prompt
+      );
+
+      res.json({
+          message: 'Analysis completed successfully',
+          organizationName: organization.companyName,
+          fileName: dataEntry.fileName,
+          analysis: analysisResult // This will now be an array of objects
+      });
+
+  } catch (err) {
+      console.error('Error during analysis:', err);
+      res.status(500).json({ 
+          error: 'Error processing analysis request',
+          details: err.message 
+      });
   }
 };
