@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 dotenv.config();
 
+
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.DATABASE_URL, {
@@ -13,6 +14,7 @@ const connectDB = async () => {
     });
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
+    // console.log('MongoDB connection successful', process.env.DATABASE_URL);
   } catch (error) {
     console.error('MongoDB connection error:', error);
     process.exit(1);
