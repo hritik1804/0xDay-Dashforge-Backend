@@ -2,8 +2,13 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 dotenv.config();
 
-
 const connectDB = async () => {
+  // Add validation for DATABASE_URL
+  if (!process.env.DATABASE_URL) {
+    console.error('Error: DATABASE_URL is not defined in environment variables');
+    process.exit(1);
+  }
+
   try {
     const conn = await mongoose.connect(process.env.DATABASE_URL, {
       useNewUrlParser: true,
@@ -14,10 +19,7 @@ const connectDB = async () => {
     });
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
-    // console.log('MongoDB connection successful', process.env.DATABASE_URL);
   } catch (error) {
-    console.log('MongoDB connection error:', error);
-    
     console.error('MongoDB connection error:', error);
     process.exit(1);
   }
