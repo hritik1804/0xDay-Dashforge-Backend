@@ -13,6 +13,7 @@
   "description": "",
   "dependencies": {
     "@clerk/clerk-sdk-node": "^5.1.4",
+    "@prisma/client": "^6.1.0",
     "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -28,6 +29,7 @@
     "openai": "^4.77.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "prisma": "^6.1.0"
   }
 }
